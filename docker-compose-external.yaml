@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+
+  # Init frpc configuration file in volume
+  frps-init:
+    image: busybox
+    container_name: frpc-init
+    environment:
+      FILE_CONTENT: |
+        bindPort = {{ .Envs.FRP_SERVER_PORT }}
+        auth.method = "token"
+        auth.token = "{{ .Envs.FRP_SERVER_TOKEN }}"
+    volumes:
+      - frp-config:/etc/frp
+    entrypoint: sh -c 'printf "%s" "$$FILE_CONTENT" > /etc/frp/frps.toml && cat /etc/frp/frps.toml'
+    network_mode: none
+    restart: "no"
+
+  # Fast reverse proxy server
+  frps:
+    image: snowdreamtech/frps
+    container_name: frps
+    restart: always
+    network_mode: host
+    depends_on:
+      - frps-init
+    volumes:
+      - frp-config:/etc/frp
+    environment:
+      - FRP_SERVER_PORT=7000
+      - FRP_SERVER_TOKEN=${FRP_SERVER_TOKEN}
+
+volumes:
+  frp-config:

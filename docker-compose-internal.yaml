@@ -1,0 +1,80 @@
+version: "3.8"
+
+services:
+
+  # Init frpc configuration file in volume
+  frpc-init:
+    image: busybox
+    container_name: frpc-init
+    environment:
+      FILE_CONTENT: |
+        serverPort = {{ .Envs.FRP_SERVER_PORT }}
+        serverAddr = "{{ .Envs.FRP_SERVER_ADDR }}"
+        auth.method = "token"
+        auth.token = "{{ .Envs.FRP_SERVER_TOKEN }}"
+        
+        [[proxies]]
+        name = "{{ .Envs.FRP_PROXY_NAME }}"
+        type = "{{ .Envs.FRP_PROXY_TYPE }}"
+        localIP = "{{ .Envs.FRP_PROXY_IP }}"
+        localPort = {{ .Envs.FRP_PROXY_PORT_LOCAL }}
+        remotePort = {{ .Envs.FRP_PROXY_PORT_REMOTE }}
+    volumes:
+      - frp-config:/etc/frp
+    entrypoint: sh -c 'printf "%s" "$$FILE_CONTENT" > /etc/frp/frpc.toml && cat /etc/frp/frpc.toml'
+    network_mode: none
+    restart: "no"
+
+  # Fast reverse proxy client
+  frpc:
+    image: snowdreamtech/frpc
+    container_name: frpc
+    restart: unless-stopped
+    depends_on:
+      - frpc-init
+    volumes:
+      - frp-config:/etc/frp
+    environment:
+      # External server configuration
+      - FRP_SERVER_PORT=7000
+      - FRP_SERVER_ADDR=${FRP_SERVER_ADDR}
+      - FRP_SERVER_TOKEN=${FRP_SERVER_TOKEN}
+
+      # Proxy configuration
+      # Proxy name (must be unique)
+      - FRP_PROXY_NAME=minecraft-forge
+      # Available types: tcp, udp, http, https
+      - FRP_PROXY_TYPE=tcp
+      # Proxy target IP (can use docker service name)
+      - FRP_PROXY_IP=forge
+      # Proxy target port
+      - FRP_PROXY_PORT_LOCAL=25565
+      # Remote port which will be avaible on the external server
+      - FRP_PROXY_PORT_REMOTE=25565
+      
+  forge:
+    container_name: forge
+    image: itzg/minecraft-server
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    environment:
+      EULA: "TRUE"
+      TYPE: FORGE
+      VERSION: "1.19.2"
+      MEMORY: 4G
+      FORCE_GAMEMODE: true
+      DIFFICULTY: hard
+      MODE: survival
+      DEBUG: "true"
+      WORLD: "/world"
+    volumes:
+      - data:/data
+      - mods:/mods:ro
+      - world:/world:ro
+
+volumes:
+  frp-config:
+  data:
+  mods:
+  world:
